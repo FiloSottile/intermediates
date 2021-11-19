@@ -1,0 +1,26 @@
+name: Update pool
+on:
+  push:
+  schedule:
+    - cron: '4 2 * * *' # daily at 2:04
+permissions:
+  contents: write
+jobs:
+  update:
+    name: Download, test, and commit changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Go
+        uses: actions/setup-go@v2
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Regenerate pool
+        run: go generate
+      - name: Run tests
+        run: go test -race ./...
+      - name: Commit and push if changed
+        run: |-
+          git config user.name "GitHub Actions"
+          git config user.email "actions@users.noreply.github.com"
+          git commit -a -m "intermediates: update certificates" || exit 0
+          git push
