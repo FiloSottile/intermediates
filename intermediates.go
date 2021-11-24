@@ -19,10 +19,17 @@
 package intermediates
 
 import (
+	"compress/flate"
 	"crypto/tls"
 	"crypto/x509"
+	_ "embed"
+	"io"
+	"strings"
 	"sync"
 )
+
+//go:embed intermediates.bin
+var compressedPEMPool string
 
 var loadOnce sync.Once
 var pool *x509.CertPool
@@ -38,6 +45,8 @@ var pool *x509.CertPool
 // distinct CertPools.
 func Pool() *x509.CertPool {
 	loadOnce.Do(func() {
+		r := flate.NewReader(strings.NewReader(compressedPEMPool))
+		pemList, _ := io.ReadAll(r)
 		pool = x509.NewCertPool()
 		pool.AppendCertsFromPEM([]byte(pemList))
 	})
