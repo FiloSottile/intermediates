@@ -10,6 +10,7 @@
 package main
 
 import (
+	"bytes"
 	"compress/flate"
 	"crypto/sha256"
 	"crypto/x509"
@@ -19,6 +20,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
 	"text/template"
 	"time"
 )
@@ -27,6 +29,12 @@ import (
 
 // ccadb is from https://wiki.mozilla.org/CA/Intermediate_Certificates.
 const ccadb = "https://ccadb-public.secure.force.com/mozilla/MozillaIntermediateCertsCSVReport"
+
+type intermediate struct {
+	Subject, Issuer string
+	PEM             string
+	Hash            [sha256.Size]byte
+}
 
 func main() {
 	c := &http.Client{Timeout: 1 * time.Minute}
@@ -37,17 +45,7 @@ func main() {
 		log.Fatalf("GET got %d: %v", req.StatusCode, req.Status)
 	}
 
-	text, err := os.Create("intermediates.pem")
-	fatalIfErr(err)
-	defer func() { fatalIfErr(text.Close()) }()
-	zf, err := os.Create("intermediates.bin")
-	fatalIfErr(err)
-	defer func() { fatalIfErr(zf.Close()) }()
-	zw, err := flate.NewWriter(zf, flate.DefaultCompression)
-	fatalIfErr(err)
-	defer func() { fatalIfErr(zw.Close()) }()
-
-	count := 0
+	var intermediates []intermediate
 	seen := make(map[[sha256.Size]byte]bool)
 
 	r := csv.NewReader(req.Body)
@@ -79,22 +77,48 @@ func main() {
 		}
 		seen[hash] = true
 
-		io.WriteString(text, "# Subject: "+record[0]+"\n")
-		io.WriteString(text, "# Issuer: "+record[1]+"\n")
-		io.WriteString(text, record[4])
+		intermediates = append(intermediates, intermediate{
+			Subject: record[0], Issuer: record[1],
+			PEM: record[4], Hash: hash,
+		})
+	}
+
+	sort.Slice(intermediates, func(i, j int) bool {
+		if intermediates[i].Issuer != intermediates[j].Issuer {
+			return intermediates[i].Issuer < intermediates[j].Issuer
+		}
+		if intermediates[i].Subject != intermediates[j].Subject {
+			return intermediates[i].Subject < intermediates[j].Subject
+		}
+		return bytes.Compare(intermediates[i].Hash[:], intermediates[j].Hash[:]) < 0
+	})
+
+	text, err := os.Create("intermediates.pem")
+	fatalIfErr(err)
+	defer func() { fatalIfErr(text.Close()) }()
+	zf, err := os.Create("intermediates.bin")
+	fatalIfErr(err)
+	defer func() { fatalIfErr(zf.Close()) }()
+	zw, err := flate.NewWriter(zf, flate.DefaultCompression)
+	fatalIfErr(err)
+	defer func() { fatalIfErr(zw.Close()) }()
+
+	for _, i := range intermediates {
+		io.WriteString(text, "# Issuer: "+i.Issuer+"\n")
+		io.WriteString(text, "# Subject: "+i.Subject+"\n")
+		io.WriteString(text, i.PEM)
 		io.WriteString(text, "\n")
-		io.WriteString(zw, record[4])
+		io.WriteString(zw, i.PEM)
 		io.WriteString(zw, "\n")
-		count++
 	}
 
 	f, err := os.Create("count.go")
 	fatalIfErr(err)
 	defer func() { fatalIfErr(f.Close()) }()
 
-	tmpl.Execute(f, count)
+	tmpl.Execute(f, len(intermediates))
 
-	log.Printf("Wrote %d intermediates.", count)
+	log.Printf("Wrote %d intermediates.", len(intermediates))
 }
 
 var tmpl = template.Must(template.New("count.go").Parse(
