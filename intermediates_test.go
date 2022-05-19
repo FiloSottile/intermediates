@@ -22,6 +22,20 @@ func TestBadSSL(t *testing.T) {
 	defer c.Close()
 }
 
+func TestIncompleteChain(t *testing.T) {
+	c, err := tls.Dial("tcp", "google.com:443", &tls.Config{
+		InsecureSkipVerify: true,
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			cs.PeerCertificates = cs.PeerCertificates[:1]
+			return VerifyConnection(cs)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+}
+
 func TestCount(t *testing.T) {
 	if gotCount := len(Pool().Subjects()); gotCount != expectedCount {
 		t.Logf("%s", Pool().Subjects())

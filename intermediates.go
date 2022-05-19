@@ -57,6 +57,7 @@ func Pool() *x509.CertPool {
 // callback in a tls.Config for a client connection.
 //
 // It performs the same verification that crypto/tls does by default, but it
+// makes use of both the server's intermediates and this package's pool, and it
 // disregards the Time and RootCAs fields of tls.Config, using their default
 // values: the current time and the system roots.
 func VerifyConnection(cs tls.ConnectionState) error {
