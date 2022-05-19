@@ -12,6 +12,7 @@ import (
 )
 
 func TestBadSSL(t *testing.T) {
+	t.Skip("badssl.com certificates are currently expired")
 	c, err := tls.Dial("tcp", "incomplete-chain.badssl.com:443", &tls.Config{
 		InsecureSkipVerify: true,
 		VerifyConnection:   VerifyConnection,

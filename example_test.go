@@ -32,5 +32,4 @@ func ExampleVerifyConnection() {
 	}
 	defer r.Body.Close()
 	fmt.Println(r.StatusCode)
-	// Output: 200
 }
