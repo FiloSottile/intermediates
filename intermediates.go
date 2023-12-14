@@ -31,8 +31,18 @@ import (
 //go:embed intermediates.bin
 var compressedPEMPool string
 
-var loadOnce sync.Once
-var pool *x509.CertPool
+var _poolOnce sync.Once
+var _pool *x509.CertPool
+
+func pool() *x509.CertPool {
+	_poolOnce.Do(func() {
+		r := flate.NewReader(strings.NewReader(compressedPEMPool))
+		pemList, _ := io.ReadAll(r)
+		_pool = x509.NewCertPool()
+		_pool.AppendCertsFromPEM([]byte(pemList))
+	})
+	return _pool
+}
 
 // Pool returns a new x509.CertPool containing a set of known WebPKI
 // intermediates chaining to roots in the Mozilla Root Program.
@@ -44,13 +54,7 @@ var pool *x509.CertPool
 // intermediates provided by the server, and multiple invocations return
 // distinct CertPools.
 func Pool() *x509.CertPool {
-	loadOnce.Do(func() {
-		r := flate.NewReader(strings.NewReader(compressedPEMPool))
-		pemList, _ := io.ReadAll(r)
-		pool = x509.NewCertPool()
-		pool.AppendCertsFromPEM([]byte(pemList))
-	})
-	return copyCertPool(pool)
+	return copyCertPool(pool())
 }
 
 // VerifyConnection is a function that can be used as the VerifyConnection
@@ -63,11 +67,20 @@ func Pool() *x509.CertPool {
 func VerifyConnection(cs tls.ConnectionState) error {
 	opts := x509.VerifyOptions{
 		DNSName:       cs.ServerName,
-		Intermediates: Pool(),
+		Intermediates: x509.NewCertPool(),
 	}
 	for _, cert := range cs.PeerCertificates[1:] {
 		opts.Intermediates.AddCert(cert)
 	}
 	_, err := cs.PeerCertificates[0].Verify(opts)
+	if err != nil {
+		// We could simply extend a copy of the pool with the server's
+		// intermediates and do a single verification, but CertPool.Clone is
+		// pretty expensive for such a large pool.
+		_, err = cs.PeerCertificates[0].Verify(x509.VerifyOptions{
+			DNSName:       cs.ServerName,
+			Intermediates: pool(),
+		})
+	}
 	return err
 }
