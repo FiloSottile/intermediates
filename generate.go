@@ -28,7 +28,7 @@ import (
 //go:generate go run generate.go
 
 // ccadb is from https://wiki.mozilla.org/CA/Intermediate_Certificates.
-const ccadb = "https://ccadb-public.secure.force.com/mozilla/MozillaIntermediateCertsCSVReport"
+const ccadb = "https://ccadb.my.salesforce-sites.com/mozilla/MozillaIntermediateCertsCSVReport"
 
 type intermediate struct {
 	Subject, Issuer string
